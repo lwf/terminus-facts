@@ -2,9 +2,9 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -19,21 +19,18 @@ func assert(err error) {
 	}
 }
 
-func get(dir []string) io.Reader {
+func get(dir []string) []byte {
 	url := filepath.Join(dir...)
 	req, err := http.Get(fmt.Sprintf("http://169.254.169.254/latest/meta-data/%s", url))
 	assert(err)
-	return req.Body
-}
-
-func getAll(dir []string) string {
-	data, err := ioutil.ReadAll(get(dir))
+	defer req.Body.Close()
+	data, err := ioutil.ReadAll(req.Body)
 	assert(err)
-	return string(data)
+	return data
 }
 
 func getDir(acc map[string]interface{}, dir []string) {
-	s := bufio.NewScanner(get(dir))
+	s := bufio.NewScanner(bytes.NewReader(get(dir)))
 	for s.Scan() {
 		line := s.Text()
 		if line[len(line)-1] == '/' {
@@ -42,9 +39,9 @@ func getDir(acc map[string]interface{}, dir []string) {
 			getDir(acc[part].(map[string]interface{}), append(dir, part))
 		} else if len(dir) > 0 && dir[len(dir)-1] == "public-keys" {
 			parts := strings.Split(line, "=")
-			acc[parts[1]] = getAll(append(dir, []string{parts[0], "openssh-key"}...))
+			acc[parts[1]] = string(get(append(dir, []string{parts[0], "openssh-key"}...)))
 		} else {
-			acc[line] = getAll(append(dir, line))
+			acc[line] = string(get(append(dir, line)))
 		}
 	}
 	assert(s.Err())
